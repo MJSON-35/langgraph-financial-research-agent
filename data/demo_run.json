@@ -1,0 +1,39 @@
+{
+  "name": "offline_portfolio_demo",
+  "description": "Deterministic end-to-end demo using synthetic stock data and no external credentials.",
+  "run_metadata": {
+    "prototype_stage": "portfolio_demo",
+    "data_mode": "csv",
+    "universe_source": "data/sample_universe.csv",
+    "real_data_enabled": false,
+    "backtest_enabled": false,
+    "forward_test_enabled": false,
+    "macro_mode": "state",
+    "prefilter_top_n": 6,
+    "news_vectorstore_enabled": false,
+    "news_tavily_enabled": false,
+    "news_yfinance_enabled": false,
+    "use_ollama": false,
+    "output_dir": "outputs/offline_demo",
+    "macro_context": {
+      "growth_signal": "stable",
+      "inflation_signal": "cooling",
+      "policy_signal": "unchanged",
+      "volatility_signal": "moderate",
+      "growth": {"pmi_level": 51.8, "pmi_trend": "stable", "employment_trend": "stable"},
+      "inflation": {"headline_cpi_trend": "cooling", "core_cpi_trend": "sticky"},
+      "policy": {"rate_direction": "unchanged", "yield_curve": "slightly_inverted"},
+      "market": {"volatility_regime": "moderate", "usd_trend": "firm", "oil_trend": "stable"}
+    },
+    "macro_notes": {
+      "source_mode": "local_structured_demo",
+      "notes": ["Use structured macro fields conservatively.", "Do not infer unsupported macro shocks."]
+    },
+    "sector_hints": {
+      "overweight": ["Technology"],
+      "underweight": ["Energy"],
+      "key_macro_risks": ["policy uncertainty"]
+    }
+  },
+  "report_output": "outputs/offline_demo/demo_report.md"
+}

@@ -1,0 +1,24 @@
+{
+  "growth_signal": "stable",
+  "inflation_signal": "cooling",
+  "policy_signal": "unchanged",
+  "volatility_signal": "moderate",
+  "growth": {
+    "pmi_level": 51.8,
+    "pmi_trend": "stable",
+    "employment_trend": "stable"
+  },
+  "inflation": {
+    "headline_cpi_trend": "cooling",
+    "core_cpi_trend": "sticky"
+  },
+  "policy": {
+    "rate_direction": "unchanged",
+    "yield_curve": "slightly_inverted"
+  },
+  "market": {
+    "volatility_regime": "moderate",
+    "usd_trend": "firm",
+    "oil_trend": "stable"
+  }
+}

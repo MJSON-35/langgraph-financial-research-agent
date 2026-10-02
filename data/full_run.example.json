@@ -1,0 +1,32 @@
+{
+  "name": "public_full_universe_example",
+  "description": "Optional live-data run using locally generated S&P 500 and KOSPI 200 universe files.",
+  "run_metadata": {
+    "prototype_stage": "full_universe_example",
+    "data_mode": "live",
+    "universe_name": "sp500_kospi200_full",
+    "real_data_enabled": true,
+    "krx_enabled": true,
+    "yfinance_enabled": true,
+    "save_feature_snapshot": true,
+    "save_price_history": true,
+    "feature_snapshot_path": "data/features/full_latest_features.csv",
+    "price_history_source_path": "data/price_history/full_price_history.csv",
+    "backtest_enabled": false,
+    "forward_test_enabled": false,
+    "macro_mode": "state",
+    "prefilter_top_n": 20,
+    "news_vectorstore_enabled": false,
+    "news_tavily_enabled": false,
+    "news_yfinance_enabled": false,
+    "use_ollama": false,
+    "output_dir": "outputs/full_run",
+    "macro_context": {
+      "growth_signal": "stable",
+      "inflation_signal": "cooling",
+      "policy_signal": "unchanged",
+      "volatility_signal": "moderate"
+    }
+  },
+  "report_output": "outputs/full_run/demo_report.md"
+}

@@ -1,0 +1,34 @@
+{
+  "name": "local_ollama_demo",
+  "description": "Optional local LLM run. It falls back to deterministic logic if Ollama is unavailable.",
+  "run_metadata": {
+    "prototype_stage": "portfolio_demo",
+    "data_mode": "csv",
+    "universe_source": "data/sample_universe.csv",
+    "real_data_enabled": false,
+    "backtest_enabled": false,
+    "forward_test_enabled": false,
+    "macro_mode": "state",
+    "prefilter_top_n": 6,
+    "news_vectorstore_enabled": false,
+    "news_tavily_enabled": false,
+    "news_yfinance_enabled": false,
+    "use_ollama": true,
+    "ollama_base_url": "http://127.0.0.1:11434",
+    "ollama_model": "gemma:7b",
+    "ollama_enabled_agents": ["macro_agent", "equity_agent", "risk_agent", "portfolio_manager"],
+    "output_dir": "outputs/ollama_demo",
+    "macro_context": {
+      "growth_signal": "stable",
+      "inflation_signal": "cooling",
+      "policy_signal": "unchanged",
+      "volatility_signal": "moderate"
+    },
+    "sector_hints": {
+      "overweight": ["Technology"],
+      "underweight": ["Energy"],
+      "key_macro_risks": ["policy uncertainty"]
+    }
+  },
+  "report_output": "outputs/ollama_demo/demo_report.md"
+}

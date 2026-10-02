@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-picker-prototype"
+version = "0.1.0"
+description = "LangGraph multi-agent stock research workflow with optional news RAG"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "langgraph>=0.2.0,<2.0.0",
+    "pandas>=2.0.0,<3.0.0",
+    "numpy>=1.24.0,<2.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+rag = [
+    "tavily-python>=0.5.0,<1.0.0",
+    "chromadb>=0.5.0,<2.0.0",
+    "sentence-transformers>=2.7.0,<6.0.0",
+]
+live-data = [
+    "yfinance>=0.2.40,<1.0.0",
+    "pykrx>=1.0.48,<1.2.0",
+    "lxml>=4.9.0,<7.0.0",
+]
+all = [
+    "tavily-python>=0.5.0,<1.0.0",
+    "chromadb>=0.5.0,<2.0.0",
+    "sentence-transformers>=2.7.0,<6.0.0",
+    "yfinance>=0.2.40,<1.0.0",
+    "pykrx>=1.0.48,<1.2.0",
+    "lxml>=4.9.0,<7.0.0",
+]
+
+[project.scripts]
+stock-picker = "stock_picker.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
