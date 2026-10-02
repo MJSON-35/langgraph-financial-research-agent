@@ -137,6 +137,17 @@ class PortfolioDecision(AgentSummary, total=False):
     next_steps: List[str]
 
 
+class ToolAuditRecord(TypedDict, total=False):
+    """Secret-safe record of an external tool routing decision or invocation."""
+
+    tool_name: str
+    invoked: bool
+    reason: str
+    success: Optional[bool]
+    error_type: Optional[str]
+    metadata: Dict[str, Any]
+
+
 class StockPickerState(TypedDict, total=False):
     """Shared LangGraph state for the full workflow."""
 
@@ -152,4 +163,7 @@ class StockPickerState(TypedDict, total=False):
     report: str
     debug_notes: List[str]
     run_metadata: Dict[str, Any]
+    routing_decisions: Dict[str, Dict[str, Any]]
+    tool_audit_trail: List[ToolAuditRecord]
+    macro_tool_context: Dict[str, Any]
     error: Optional[str]

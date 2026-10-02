@@ -151,6 +151,9 @@ def summarize_macro_step(state: StockPickerState) -> dict[str, Any]:
         "preferred_sectors": macro_view.get("preferred_sectors", []),
         "risk_sectors": macro_view.get("risk_sectors", []),
         "key_macro_risks": macro_view.get("key_macro_risks", []),
+        "tool_audit": [
+            item for item in state.get("tool_audit_trail", []) if item.get("tool_name") == "fred_macro"
+        ],
     }
 
 
@@ -161,6 +164,11 @@ def summarize_news_rag_step(state: StockPickerState) -> dict[str, Any]:
         "news_covered_count": sum(
             1 for item in candidates if item.get("news_rag_summary") != "news unavailable"
         ),
+        "tool_audit": [
+            item
+            for item in state.get("tool_audit_trail", [])
+            if item.get("tool_name") == "tavily_news_search"
+        ],
         "per_stock_news": {
             str(item.get("ticker", "UNKNOWN")): {
                 "news_rag_summary": item.get("news_rag_summary", "news unavailable"),

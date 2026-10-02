@@ -8,7 +8,9 @@ The default demo is deterministic, credential free, and based on six fictional s
 
 ## Highlights
 
-- **LangGraph orchestration:** seven explicit nodes over one `StockPickerState`
+- **LangGraph orchestration:** seven domain stages plus explicit evidence checks and conditional tool branches over one `StockPickerState`
+- **Evidence-based routing:** deterministic rules skip Tavily and FRED when existing evidence is sufficient
+- **Typed external tools:** Tavily and FRED calls share a `ToolResult` contract and export a secret-safe invocation audit
 - **Financial data ingestion:** CSV, pykrx, and yfinance provider adapters
 - **News RAG:** normalization, company matching, quality filtering, near-duplicate removal, ticker-scoped retrieval, and Chroma persistence
 - **Financial analysis agents:** macro, equity, risk, and portfolio responsibilities are separated
@@ -20,21 +22,25 @@ The default demo is deterministic, credential free, and based on six fictional s
 
 ```mermaid
 flowchart LR
-    A[Data Agent] --> B[News RAG]
-    B --> C[Macro Agent]
-    C --> D[Equity Agent]
-    D --> E[Risk Agent]
-    E --> F[Portfolio Manager]
-    F --> G[Backtesting]
+    A[Data Agent] --> B[Local / Vector News Evidence]
+    B --> C{Evidence sufficient?}
+    C -- Yes --> E[Finalize News RAG]
+    C -- No, Tavily enabled --> D[Tavily Typed Tool]
+    D --> E
+    E --> F{Macro evidence sufficient?}
+    F -- Yes --> H[Macro Agent]
+    F -- No, FRED ready --> G[FRED Typed Tool]
+    G --> H
+    H --> I[Equity Agent]
+    I --> J[Risk Agent]
+    J --> K[Portfolio Manager]
+    K --> L[Backtesting]
 
-    M[(CSV / pykrx / yfinance)] --> A
-    N[Tavily / local news] --> B
     V[(Chroma + local embeddings)] <--> B
-    R[FRED / structured macro input] --> C
-    O[Local Ollama] -. optional JSON .-> C
-    O -. optional JSON .-> D
-    O -. optional JSON .-> E
-    O -. optional narrative .-> F
+    O[Local Ollama] -. optional JSON .-> H
+    O -. optional JSON .-> I
+    O -. optional JSON .-> J
+    O -. optional narrative .-> K
 ```
 
 See [docs/architecture.md](docs/architecture.md) for node responsibilities and implementation boundaries.
@@ -174,7 +180,7 @@ Each node emits a compact summary. Final reports preserve score components, sele
 
 ## Limitations
 
-- The graph is sequential and does not yet implement conditional edges, parallel fan-out, checkpointing, or human approval nodes.
+- Conditional edges currently cover Tavily news retrieval and FRED macro retrieval. The graph does not yet implement parallel fan-out, checkpointing, or human approval nodes.
 - The project uses a direct Ollama HTTP adapter. Native function calling, LangGraph `ToolNode`, and MCP are not implemented.
 - Live providers can return incomplete, delayed, or revised data.
 - News quality and company matching use heuristic rules; there is no labeled retrieval evaluation set yet.
@@ -182,11 +188,10 @@ Each node emits a compact summary. Final reports preserve score components, sele
 
 ## Future work
 
-1. Add conditional routing for missing evidence and retrieval retries.
-2. Wrap provider operations as typed tools with traceable invocation records.
-3. Add a labeled retrieval set with recall at k and MRR.
-4. Add leakage-controlled rolling backtests, costs, and benchmark comparisons.
-5. Add an API layer after workflow contracts and evaluation are stable.
+1. Add bounded retry and evidence refresh policies to the existing deterministic routes.
+2. Add a labeled retrieval set with recall at k and MRR.
+3. Add leakage-controlled rolling backtests, costs, and benchmark comparisons.
+4. Add an API layer after workflow contracts and evaluation are stable.
 
 ## License
 

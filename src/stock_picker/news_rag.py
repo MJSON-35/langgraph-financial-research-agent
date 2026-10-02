@@ -19,6 +19,13 @@ from stock_picker.news_vectorstore import (
     retrieve_recent_news,
     score_news_quality,
 )
+from stock_picker.research_tools import (
+    TavilyNewsSearchTool,
+    ToolResult,
+    build_skipped_tool_audit,
+    build_tool_audit,
+)
+from stock_picker.routing import decide_news_route
 from stock_picker.state import StockPickerState
 from stock_picker.tavily_news import fetch_tavily_news_records
 
@@ -68,9 +75,100 @@ def news_rag_node(state: StockPickerState) -> StockPickerState:
     return state
 
 
+def news_evidence_node(state: StockPickerState) -> StockPickerState:
+    """Collect and score local, candidate, and vector-store news without web search."""
+    state["filtered_candidates"] = attach_news_to_candidates(
+        state.get("filtered_candidates", []),
+        state.get("run_metadata", {}),
+        allow_tavily=False,
+    )
+    return state
+
+
+def news_evidence_check_node(state: StockPickerState) -> StockPickerState:
+    """Record the deterministic news route before the conditional edge runs."""
+    decision = decide_news_route(state)
+    state["routing_decisions"] = {
+        **state.get("routing_decisions", {}),
+        "news": decision,
+    }
+    missing_tickers = set(decision.get("tickers", []))
+    for candidate in state.get("filtered_candidates", []):
+        summary = candidate.get("news_quality_summary", {})
+        if not isinstance(summary, dict) or summary.get("tavily_status") != "deferred_to_router":
+            continue
+        ticker = str(candidate.get("ticker", "")).strip()
+        if ticker not in missing_tickers:
+            summary["tavily_status"] = "skipped_sufficient_news"
+        elif decision["route"] == "news_finalize":
+            summary["tavily_status"] = f"skipped_{decision['reason']}"
+    if decision["route"] == "news_finalize":
+        state["tool_audit_trail"] = [
+            *state.get("tool_audit_trail", []),
+            build_skipped_tool_audit("tavily_news_search", str(decision["reason"])),
+        ]
+    return state
+
+
+def tavily_news_tool_node(state: StockPickerState) -> StockPickerState:
+    """Invoke Tavily only for candidates selected by the news evidence router."""
+    decision = state.get("routing_decisions", {}).get("news", decide_news_route(state))
+    target_tickers = set(decision.get("tickers", []))
+    candidates = state.get("filtered_candidates", [])
+    target_candidates = [item for item in candidates if str(item.get("ticker", "")) in target_tickers]
+    refreshed = attach_news_to_candidates(
+        target_candidates,
+        state.get("run_metadata", {}),
+        allow_tavily=True,
+    )
+    refreshed_by_ticker = {str(item.get("ticker", "")): item for item in refreshed}
+    state["filtered_candidates"] = [
+        refreshed_by_ticker.get(str(item.get("ticker", "")), item)
+        for item in candidates
+    ]
+
+    statuses = [
+        str((item.get("news_quality_summary", {}) or {}).get("tavily_status", "error"))
+        for item in refreshed
+    ]
+    error_types = sorted({status for status in statuses if status != "fetched"})
+    result = ToolResult(
+        tool_name="tavily_news_search",
+        success=bool(statuses) and all(status == "fetched" for status in statuses),
+        result=None,
+        error_type=",".join(error_types) if error_types else None,
+        metadata={
+            "attempted_count": len(target_candidates),
+            "successful_count": sum(status == "fetched" for status in statuses),
+            "retrieved_count": sum(
+                int((item.get("news_quality_summary", {}) or {}).get("retrieved_from_tavily", 0))
+                for item in refreshed
+            ),
+        },
+    )
+    state["tool_audit_trail"] = [
+        *state.get("tool_audit_trail", []),
+        build_tool_audit(result, reason=str(decision.get("reason", "insufficient_local_news_coverage"))),
+    ]
+    return state
+
+
+def news_finalize_node(state: StockPickerState) -> StockPickerState:
+    """Finalize the news stage after either branch and export one coherent summary."""
+    candidates = state.get("filtered_candidates", [])
+    state["debug_notes"] = [
+        *state.get("debug_notes", []),
+        f"News RAG attached qualitative news fields for {len(candidates)} candidates.",
+    ]
+    export_news_rag_step_summary(state)
+    return state
+
+
 def attach_news_to_candidates(
     candidates: list[dict[str, Any]],
     run_metadata: dict[str, Any] | None = None,
+    *,
+    allow_tavily: bool = True,
 ) -> list[dict[str, Any]]:
     """Return candidates with headline, summary, sentiment, risk, and source fields."""
     metadata = run_metadata or {}
@@ -93,6 +191,7 @@ def attach_news_to_candidates(
             "filtered_low_quality_count": 0,
             "old_news_filtered_count": 0,
             "tavily_status": "not_called",
+            "tavily_error_type": None,
         }
 
         if records:
@@ -109,15 +208,20 @@ def attach_news_to_candidates(
             quality_summary["retrieved_from_vectorstore"] = len(vector_records)
 
         enough_news = len(records) >= retrieval_top_k
-        if not enough_news and idx < tavily_top_n:
-            tavily_records, tavily_status = fetch_tavily_news_records(updated, metadata)
+        if not enough_news and idx < tavily_top_n and allow_tavily:
+            tool_result = TavilyNewsSearchTool(search_fn=fetch_tavily_news_records).invoke(updated, metadata)
+            tavily_records = tool_result.result if isinstance(tool_result.result, list) else []
+            tavily_status = str(tool_result.metadata.get("provider_status", "error"))
             quality_summary["tavily_status"] = tavily_status
+            quality_summary["tavily_error_type"] = tool_result.error_type
             if tavily_records:
                 records.extend(tavily_records)
                 source_notes.append("tavily_news")
                 quality_summary["retrieved_from_tavily"] = len(tavily_records)
         elif enough_news:
             quality_summary["tavily_status"] = "skipped_sufficient_news"
+        elif not allow_tavily:
+            quality_summary["tavily_status"] = "deferred_to_router"
         else:
             quality_summary["tavily_status"] = "skipped_candidate_limit"
 
@@ -415,6 +519,11 @@ def export_news_rag_step_summary(state: StockPickerState) -> None:
             1 for candidate in candidates if candidate.get("news_rag_summary") != "news unavailable"
         ),
         "tavily_status_counts": tavily_status_counts,
+        "tool_audit": [
+            item
+            for item in state.get("tool_audit_trail", [])
+            if item.get("tool_name") == "tavily_news_search"
+        ],
         "per_stock_news": {
             str(candidate.get("ticker", "UNKNOWN")): {
                 "news_rag_summary": candidate.get("news_rag_summary", "news unavailable"),

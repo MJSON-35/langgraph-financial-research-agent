@@ -10,6 +10,9 @@ from stock_picker.export_utils import save_step_summary
 from stock_picker.llm_utils import coerce_string_list, is_ollama_enabled, run_ollama_json_prompt
 from stock_picker.prompts import render_macro_agent_prompt
 from stock_picker.providers import load_macro_context
+from stock_picker.providers.macro_providers import normalize_macro_context
+from stock_picker.research_tools import FredMacroTool, build_skipped_tool_audit, build_tool_audit
+from stock_picker.routing import decide_macro_route
 from stock_picker.state import StockPickerState
 
 
@@ -32,6 +35,11 @@ def build_macro_agent_step_summary(state: StockPickerState) -> dict[str, object]
         "preferred_sectors": preferred_sectors,
         "risk_sectors": risk_sectors,
         "key_macro_risks": macro_view.get("key_macro_risks", []),
+        "tool_audit": [
+            item
+            for item in state.get("tool_audit_trail", [])
+            if item.get("tool_name") == "fred_macro"
+        ],
         "note": downstream_note,
     }
 
@@ -58,7 +66,7 @@ def export_macro_agent_step_summary(state: StockPickerState) -> None:
 def macro_agent_node(state: StockPickerState) -> StockPickerState:
     """Build a macro overlay with a stable rule-based baseline and optional Ollama refinement."""
     candidates = state.get("filtered_candidates", [])
-    macro_context, provider_info = load_macro_context(state)
+    macro_context, provider_info = _load_routed_macro_context(state)
     sector_hints = state.get("run_metadata", {}).get("sector_hints", {})
     macro_notes = dict(state.get("run_metadata", {}).get("macro_notes", {}))
 
@@ -136,6 +144,62 @@ def macro_agent_node(state: StockPickerState) -> StockPickerState:
     }
     export_macro_agent_step_summary(state)
     return state
+
+
+def macro_evidence_check_node(state: StockPickerState) -> StockPickerState:
+    """Record the deterministic macro route before the conditional edge runs."""
+    decision = decide_macro_route(state)
+    state["routing_decisions"] = {
+        **state.get("routing_decisions", {}),
+        "macro": decision,
+    }
+    if decision["route"] == "macro_agent":
+        state["tool_audit_trail"] = [
+            *state.get("tool_audit_trail", []),
+            build_skipped_tool_audit("fred_macro", str(decision["reason"])),
+        ]
+    return state
+
+
+def fred_macro_tool_node(state: StockPickerState) -> StockPickerState:
+    """Invoke the typed FRED tool and retain only structured, non-secret output."""
+    metadata = state.get("run_metadata", {})
+    decision = state.get("routing_decisions", {}).get("macro", decide_macro_route(state))
+    series_map = metadata.get("fred_series_map", {})
+    result = FredMacroTool().invoke(dict(series_map) if isinstance(series_map, dict) else {})
+    state["macro_tool_context"] = (
+        normalize_macro_context(dict(result.result))
+        if result.success and isinstance(result.result, dict)
+        else {}
+    )
+    state["tool_audit_trail"] = [
+        *state.get("tool_audit_trail", []),
+        build_tool_audit(result, reason=str(decision.get("reason", "insufficient_macro_evidence"))),
+    ]
+    return state
+
+
+def _load_routed_macro_context(
+    state: StockPickerState,
+) -> tuple[dict[str, object], dict[str, str]]:
+    """Load macro evidence while preventing a failed or skipped FRED retry."""
+    decision = state.get("routing_decisions", {}).get("macro")
+    tool_context = state.get("macro_tool_context", {})
+    if isinstance(tool_context, dict) and tool_context:
+        return normalize_macro_context(tool_context), {
+            "macro_provider": "fred_macro_tool",
+            "macro_provider_status": "ok",
+        }
+    if not decision:
+        return load_macro_context(state)
+    if decision.get("route") == "fred_macro_tool":
+        return {}, {"macro_provider": "fred_macro_tool", "macro_provider_status": "error"}
+    if decision.get("reason") in {"fred_credential_unavailable", "fred_series_map_missing"}:
+        return {}, {
+            "macro_provider": "fred_macro_tool",
+            "macro_provider_status": f"skipped:{decision.get('reason')}",
+        }
+    return load_macro_context(state)
 
 
 def build_rule_based_macro_view(
